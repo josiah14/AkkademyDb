@@ -26,8 +26,10 @@ class askDemoArticleParser(cacheActorPath: String,
     */
   override def receive: Receive = { case ParseArticle(uri) =>
     val senderRef = sender()
+
     val cacheResult: Future[Either[ArticleBody, String]] =
       cacheActor ? GetRequest(uri) map(x => Right(x.asInstanceOf[String]))
+
     val result: Future[Either[ArticleBody, String]] = (cacheResult recoverWith {
       case _: Exception => httpClientActor ? uri flatMap {
         case HttpResponse(rawArticle: String) =>
