@@ -33,8 +33,8 @@ class askDemoArticleParser(cacheActorPath: String,
     val result: Future[Either[ArticleBody, String]] = (cacheResult recoverWith {
       case _: Exception => httpClientActor ? uri flatMap {
         case HttpResponse(rawArticle: String) =>
-          articleParserActor ? ParseHtmlArticle(uri, rawArticle) map(
-            x => Left(x.asInstanceOf[ArticleBody]))
+          (articleParserActor ? ParseHtmlArticle(uri, rawArticle))
+            .map(x => Left(x.asInstanceOf[ArticleBody]))
         case _ => Future.failed(new Exception("unknown response"))
       }
     }).mapTo[Either[ArticleBody, String]]
