@@ -27,8 +27,7 @@ class AskDemoArticleParser(cacheActorPath: String,
   override def receive: Receive = { case ParseArticle(uri) =>
     val senderRef = sender()
 
-    val cacheResult: Future[Either[ArticleBody, String]] =
-      cacheActor ? GetRequest(uri) map(x => Right(x.asInstanceOf[String]))
+    val cacheResult: Future[Either[ArticleBody, String]] = (cacheActor ? GetRequest(uri)).mapTo[String] map(Right(_))
 
     val result: Future[Either[ArticleBody, String]] = (cacheResult recoverWith { case _ =>
       for (
@@ -39,10 +38,7 @@ class AskDemoArticleParser(cacheActorPath: String,
 
     result onComplete {
       case Success(article) =>
-        article match {
-          case Right(_) => println("cached result!")
-          case Left(articleBody) => cacheActor ! SetRequest(uri, articleBody.body)
-        }
+        article.fold(x => cacheActor ! SetRequest(uri, x.body), _ => println("cached result!"))
         article.fold(senderRef ! _, senderRef ! _)
       case Failure(e) => senderRef ! akka.actor.Status.Failure(e)
     }
