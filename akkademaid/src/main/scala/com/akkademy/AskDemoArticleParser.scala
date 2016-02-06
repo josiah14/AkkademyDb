@@ -34,7 +34,7 @@ class AskDemoArticleParser(cacheActorPath: String,
       for (
         httpResponse <- (httpClientActor ? uri).mapTo[HttpResponse];
         parsedArticle <- (articleParserActor ? ParseHtmlArticle(uri, httpResponse.body)).mapTo[ArticleBody]
-      ) yield (Left(parsedArticle))
+      ) yield Left(parsedArticle)
     }).mapTo[Either[ArticleBody, String]]
 
     result onComplete {
