@@ -8,7 +8,7 @@ import com.akkademy.messages.{SetRequest, GetRequest}
 import scala.concurrent.Future
 import scala.util.{Success, Failure, Either, Left, Right}
 
-class askDemoArticleParser(cacheActorPath: String,
+class AskDemoArticleParser(cacheActorPath: String,
                            httpClientActorPath: String,
                            articleParserActorPath: String,
                            implicit val timeout: Timeout) extends Actor {
@@ -30,20 +30,20 @@ class askDemoArticleParser(cacheActorPath: String,
     val cacheResult: Future[Either[ArticleBody, String]] =
       cacheActor ? GetRequest(uri) map(x => Right(x.asInstanceOf[String]))
 
-    val result: Future[Either[ArticleBody, String]] = (cacheResult recoverWith {
-      case _: Exception => httpClientActor ? uri flatMap {
-        case HttpResponse(rawArticle: String) =>
-          (articleParserActor ? ParseHtmlArticle(uri, rawArticle))
-            .map(x => Left(x.asInstanceOf[ArticleBody]))
-        case _ => Future.failed(new Exception("unknown response"))
-      }
+    val result: Future[Either[ArticleBody, String]] = (cacheResult recoverWith { case _ =>
+      for (
+        httpResponse <- (httpClientActor ? uri).mapTo[HttpResponse];
+        parsedArticle <- (articleParserActor ? ParseHtmlArticle(uri, httpResponse.body)).mapTo[ArticleBody]
+      ) yield (Left(parsedArticle))
     }).mapTo[Either[ArticleBody, String]]
 
     result onComplete {
-      case Success(article: Either[ArticleBody, String]) =>
-        article.right.foreach(_ => println("cached result!"))
-        article.left.foreach(articleBody => cacheActor ! SetRequest(uri, articleBody.body))
-        article.fold(senderRef ! _, senderRef ! _) // cached result
+      case Success(article) =>
+        article match {
+          case Right(_) => println("cached result!")
+          case Left(articleBody) => cacheActor ! SetRequest(uri, articleBody.body)
+        }
+        article.fold(senderRef ! _, senderRef ! _)
       case Failure(e) => senderRef ! akka.actor.Status.Failure(e)
     }
   }
