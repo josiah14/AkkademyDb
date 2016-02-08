@@ -1,11 +1,11 @@
 package com.akkademy
 
 import akka.actor.Actor
-import akka.pattern.ask
+import akka.pattern._
 import akka.util.Timeout
 import com.akkademy.messages.{SetRequest, GetRequest}
 
-import scala.concurrent.Future
+import scala.concurrent.{Future, Await}
 import scala.util.{Success, Failure, Either, Left, Right}
 
 class AskDemoArticleParser(cacheActorPath: String,
@@ -14,7 +14,7 @@ class AskDemoArticleParser(cacheActorPath: String,
                            implicit val timeout: Timeout) extends Actor {
   val cacheActor = context.actorSelection(cacheActorPath)
   val httpClientActor = context.actorSelection(httpClientActorPath)
-  val articleParserActor = context.actorSelection(articleParserActorPath)
+  val articleParserActor = Await.result(context.actorSelection(articleParserActorPath).resolveOne(), timeout.duration)
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -30,10 +30,15 @@ class AskDemoArticleParser(cacheActorPath: String,
     val cacheResult: Future[Either[ArticleBody, String]] = (cacheActor ? GetRequest(uri)).mapTo[String] map(Right(_))
 
     val result: Future[Either[ArticleBody, String]] = (cacheResult recoverWith { case _ =>
-      for (
-        httpResponse <- (httpClientActor ? uri).mapTo[HttpResponse];
-        parsedArticle <- (articleParserActor ? ParseHtmlArticle(uri, httpResponse.body)).mapTo[ArticleBody]
-      ) yield Left(parsedArticle)
+      // the shortest solution I could come up with
+      (httpClientActor ? uri).mapTo[HttpResponse].map(httpResponse => ParseHtmlArticle(uri, httpResponse.body))
+        .pipeTo(articleParserActor).future.mapTo[ArticleBody].map(Left(_))
+
+      /*** Below is an alternative using comprehensions ***/
+      // for (
+      //   httpResponse <- (httpClientActor ? uri).mapTo[HttpResponse];
+      //   parsedArticle <- (articleParserActor ? ParseHtmlArticle(uri, httpResponse.body)).mapTo[ArticleBody]
+      // ) yield Left(parsedArticle)
     }).mapTo[Either[ArticleBody, String]]
 
     result onComplete {
