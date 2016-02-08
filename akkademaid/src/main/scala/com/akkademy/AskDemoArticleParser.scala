@@ -31,7 +31,7 @@ class AskDemoArticleParser(cacheActorPath: String,
 
     val result: Future[Either[ArticleBody, String]] = (cacheResult recoverWith { case _ =>
       // the shortest solution I could come up with
-      (httpClientActor ? uri).mapTo[HttpResponse].map(httpResponse => ParseHtmlArticle(uri, httpResponse.body))
+      (httpClientActor ? uri).mapTo[HttpResponse].map(res => ParseHtmlArticle(uri, res.body))
         .pipeTo(articleParserActor).future.mapTo[ArticleBody].map(Left(_))
 
       /*** Below is an alternative using comprehensions ***/
