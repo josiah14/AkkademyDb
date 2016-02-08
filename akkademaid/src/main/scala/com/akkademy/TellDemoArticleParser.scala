@@ -30,6 +30,9 @@ class TellDemoArticleParser(cacheActorPath: String,
 
   override def receive: Receive = { case msg @ ParseArticle(uri) =>
     val extraActor = buildExtraActor(sender(), uri)
+    // look in the cache and try to parse the page from the network at the same time.  Send
+    // only the first result and then kill the extra actor so that no further processing is done.
+    // Extra kills itself it its own receive method.
     cacheActor.tell(GetRequest(uri), extraActor)
     httpClientActor.tell("test", extraActor)
     context.system.scheduler.scheduleOnce(timeout.duration, extraActor, "timeout")
@@ -44,16 +47,17 @@ class TellDemoArticleParser(cacheActorPath: String,
   private def buildExtraActor(senderRef: ActorRef, uri: String): ActorRef = {
     context.actorOf(Props(new Actor{
       override def receive: Receive = {
-        case "timeout" =>
-          senderRef ! Failure(new TimeoutException("timeout!"))
-          context.stop(self)
-        case HttpResponse(body) => articleParserActor ! ParseHtmlArticle(uri, body)
-        case body: String =>
+        case body: String => // This executes when a cached result is found.
           senderRef ! body
           context.stop(self)
-        case ArticleBody(uri, body) =>
+        // the articleParserActor will reply with an ArticleBody which is the parsing results.
+        case HttpResponse(body) => articleParserActor ! ParseHtmlArticle(uri, body)
+        case ArticleBody(uri, body) => // This executes when a raw parse of the html is done.
           cacheActor ! SetRequest(uri, body)
           senderRef ! body
+          context.stop(self)
+        case "timeout" =>
+          senderRef ! Failure(new TimeoutException("timeout!"))
           context.stop(self)
         case t => println("ignoring msg: " + t.getClass)
       }
